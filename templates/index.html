@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Automation Decision Engine</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+    .fade-in { animation: fadeIn 0.4s ease-in; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+<body class="min-h-screen bg-[#0d0d0f] text-gray-100">
+
+  <!-- Nav -->
+  <nav class="border-b border-white/5 bg-[#0d0d0f]/80 backdrop-blur sticky top-0 z-10">
+    <div class="max-w-3xl mx-auto px-5 py-3 flex items-center gap-3">
+      <div class="w-7 h-7 rounded-md bg-indigo-500 flex items-center justify-center text-xs font-bold text-white select-none">AE</div>
+      <span class="font-semibold text-sm tracking-tight">Automation Decision Engine</span>
+    </div>
+  </nav>
+
+  <main class="max-w-3xl mx-auto px-5 py-14">
+
+    <!-- Hero -->
+    <div class="text-center mb-10">
+      <h1 class="text-4xl font-bold tracking-tight mb-3">Should you automate it?</h1>
+      <p class="text-gray-400 text-sm max-w-md mx-auto leading-relaxed">
+        Paste your automation idea below. Get a structured decision, tool stack, workflow, and ROI estimate instantly.
+      </p>
+    </div>
+
+    <!-- Input Card -->
+    <div class="bg-white/5 border border-white/10 rounded-2xl p-6">
+      <label for="idea" class="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">
+        Describe your automation idea
+      </label>
+      <textarea
+        id="idea"
+        rows="4"
+        placeholder="e.g. When a new lead fills out our Typeform, enrich their data with Clearbit, score them, and if qualified — send a personalised email via Gmail and add to HubSpot."
+        class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none transition"
+      ></textarea>
+
+      <!-- Real-time toggle -->
+      <div class="mt-4 flex items-center justify-between bg-white/3 border border-white/8 rounded-xl px-4 py-3">
+        <div>
+          <p class="text-sm font-medium text-gray-200">Use Real-Time Data <span class="text-gray-500">(Web Search)</span></p>
+          <p id="toggle-hint" class="text-xs text-gray-500 mt-0.5">Fetch latest tools &amp; pricing from the web</p>
+        </div>
+        <button
+          id="realtime-toggle"
+          role="switch"
+          aria-checked="false"
+          onclick="toggleRealtime()"
+          class="relative flex-shrink-0 w-11 h-6 rounded-full transition-colors duration-200 bg-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        >
+          <span
+            id="toggle-thumb"
+            class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-gray-400 shadow transition-transform duration-200"
+          ></span>
+        </button>
+      </div>
+
+      <p id="error-msg" class="hidden mt-2 text-xs text-red-400 flex items-center gap-1">
+        <span>&#9888;</span> <span id="error-text"></span>
+      </p>
+
+      <button
+        id="submit-btn"
+        onclick="runAnalysis()"
+        class="mt-4 w-full bg-indigo-500 hover:bg-indigo-400 active:scale-[0.99] transition-all text-white font-semibold py-2.5 rounded-xl text-sm"
+      >
+        Analyze &rarr;
+      </button>
+    </div>
+
+    <!-- ───────── RESULTS ───────── -->
+    <div id="results" class="mt-10 space-y-5 fade-in hidden"></div>
+
+  </main>
+
+  <footer class="border-t border-white/5 py-6 text-center text-xs text-gray-700">
+    Automation Decision Engine &mdash; FastAPI + OpenAI
+  </footer>
+
+  <script>
+    const CAT_COLORS = {
+      Trigger:      "bg-blue-500/15 text-blue-300",
+      Action:       "bg-purple-500/15 text-purple-300",
+      AI:           "bg-indigo-500/15 text-indigo-300",
+      Storage:      "bg-teal-500/15 text-teal-300",
+      Notification: "bg-orange-500/15 text-orange-300",
+    };
+    const ROI_COLORS = {
+      Excellent: "text-emerald-400",
+      Good:      "text-green-400",
+      Marginal:  "text-yellow-400",
+      Poor:      "text-red-400",
+    };
+    const VERDICT_STYLES = {
+      "Automate It":  ["border-emerald-500/30 bg-emerald-500/5", "bg-emerald-500/20 text-emerald-300"],
+      "Needs Review": ["border-yellow-500/30 bg-yellow-500/5",   "bg-yellow-500/20 text-yellow-300"],
+      "Skip It":      ["border-red-500/30 bg-red-500/5",         "bg-red-500/20 text-red-300"],
+    };
+
+    let realtimeOn = false;
+
+    function toggleRealtime() {
+      realtimeOn = !realtimeOn;
+      const btn   = document.getElementById("realtime-toggle");
+      const thumb = document.getElementById("toggle-thumb");
+      const hint  = document.getElementById("toggle-hint");
+
+      btn.setAttribute("aria-checked", String(realtimeOn));
+
+      if (realtimeOn) {
+        btn.classList.replace("bg-white/10", "bg-indigo-500");
+        thumb.classList.replace("bg-gray-400", "bg-white");
+        thumb.classList.add("translate-x-5");
+        hint.textContent = "ON — latest tools & pricing will be fetched";
+        hint.classList.replace("text-gray-500", "text-indigo-400");
+      } else {
+        btn.classList.replace("bg-indigo-500", "bg-white/10");
+        thumb.classList.replace("bg-white", "bg-gray-400");
+        thumb.classList.remove("translate-x-5");
+        hint.textContent = "Fetch latest tools & pricing from the web";
+        hint.classList.replace("text-indigo-400", "text-gray-500");
+      }
+    }
+
+    function esc(str) {
+      return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    }
+
+    function renderResults(r) {
+      const idea = document.getElementById("idea").value.trim();
+      const d  = r.decision;
+      const vs = VERDICT_STYLES[d.verdict] || ["border-white/10 bg-white/5", "bg-white/10 text-gray-300"];
+
+      const toolsHtml = r.tools.map(t => `
+        <div class="flex items-start gap-3">
+          <span class="mt-0.5 px-2 py-0.5 rounded text-[11px] font-semibold whitespace-nowrap ${CAT_COLORS[t.category] || 'bg-white/10 text-gray-300'}">
+            ${esc(t.category)}
+          </span>
+          <div>
+            <span class="text-sm font-semibold text-gray-100">${esc(t.name)}</span>
+            <span class="text-gray-500 mx-1">&mdash;</span>
+            <span class="text-sm text-gray-400">${esc(t.purpose)}</span>
+          </div>
+        </div>`).join("");
+
+      const llm = r.llm_recommendation;
+      const llmBadge = llm.use_llm
+        ? `<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-500/20 text-indigo-300">LLM Recommended</span>`
+        : `<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-white/10 text-gray-400">No LLM Needed</span>`;
+      const promptHint = llm.prompt_hint
+        ? `<div class="mt-4"><p class="text-xs text-gray-500 mb-2">Example Prompt</p>
+           <div class="bg-black/30 border border-white/5 rounded-lg px-4 py-3 text-xs text-indigo-300 font-mono leading-relaxed">${esc(llm.prompt_hint)}</div></div>`
+        : "";
+
+      const stepsHtml = r.workflow.map((step, i) => `
+        <li class="flex gap-3 items-start">
+          <span class="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-500/20 text-indigo-300 text-xs font-bold flex items-center justify-center mt-0.5">${i+1}</span>
+          <span class="text-sm text-gray-300 leading-relaxed pt-0.5">${esc(step)}</span>
+        </li>`).join("");
+
+      const roi = r.cost_roi;
+      const roiNotes = roi.notes
+        ? `<p class="text-xs text-gray-500 leading-relaxed border-t border-white/5 pt-4"><span class="text-gray-400 font-medium">Note: </span>${esc(roi.notes)}</p>`
+        : "";
+
+      document.getElementById("results").innerHTML = `
+        <div class="border ${vs[0]} rounded-2xl p-6">
+          <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Decision</p>
+          <div class="flex items-center gap-3 mb-3 flex-wrap">
+            <span class="text-xl font-bold">${esc(d.verdict)}</span>
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-medium ${vs[1]}">${esc(d.confidence)} Confidence</span>
+          </div>
+          <p class="text-sm text-gray-300 leading-relaxed">${esc(d.reason)}</p>
+        </div>
+
+        <div class="bg-white/5 border border-white/10 rounded-2xl p-6">
+          <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">Tools</p>
+          <div class="space-y-3">${toolsHtml}</div>
+        </div>
+
+        <div class="bg-white/5 border border-white/10 rounded-2xl p-6">
+          <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest">LLM Recommendation</p>
+            ${llmBadge}
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div><p class="text-xs text-gray-500 mb-1">Suggested Model</p><p class="text-sm font-medium text-gray-200">${esc(llm.model_suggestion)}</p></div>
+            <div><p class="text-xs text-gray-500 mb-1">Use Case</p><p class="text-sm text-gray-300">${esc(llm.use_case)}</p></div>
+          </div>
+          ${promptHint}
+        </div>
+
+        <div class="bg-white/5 border border-white/10 rounded-2xl p-6">
+          <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">Workflow</p>
+          <ol class="space-y-3">${stepsHtml}</ol>
+        </div>
+
+        <div class="bg-white/5 border border-white/10 rounded-2xl p-6">
+          <div class="flex items-center justify-between mb-5 flex-wrap gap-2">
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest">Cost &amp; ROI</p>
+            <span class="text-sm font-bold ${ROI_COLORS[roi.roi_score] || 'text-gray-300'}">${esc(roi.roi_score)} ROI</span>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+            <div class="bg-black/20 rounded-xl p-3 text-center"><p class="text-xs text-gray-500 mb-1">Setup Time</p><p class="text-sm font-semibold text-gray-200">${esc(roi.estimated_setup_hours)}</p></div>
+            <div class="bg-black/20 rounded-xl p-3 text-center"><p class="text-xs text-gray-500 mb-1">Time Saved</p><p class="text-sm font-semibold text-emerald-300">${esc(roi.estimated_time_saved_weekly)}</p></div>
+            <div class="bg-black/20 rounded-xl p-3 text-center"><p class="text-xs text-gray-500 mb-1">Tool Cost</p><p class="text-sm font-semibold text-gray-200">${esc(roi.estimated_monthly_tool_cost)}</p></div>
+            <div class="bg-black/20 rounded-xl p-3 text-center"><p class="text-xs text-gray-500 mb-1">Break Even</p><p class="text-sm font-semibold text-gray-200">${esc(roi.break_even)}</p></div>
+          </div>
+          ${roiNotes}
+        </div>
+
+        <div class="text-center pt-2">
+          <a href="/dashboard?idea=${encodeURIComponent(idea)}"
+             class="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-500 hover:bg-indigo-400 active:scale-[0.99] transition-all text-white text-sm font-semibold rounded-xl">
+            View Full Workflow Dashboard &rarr;
+          </a>
+          <p class="text-xs text-gray-600 mt-2">Compare 5 ranked strategies with cost breakdown</p>
+        </div>`;
+
+      document.getElementById("results").classList.remove("hidden");
+    }
+
+    async function runAnalysis() {
+      const idea = document.getElementById("idea").value.trim();
+      const errBox  = document.getElementById("error-msg");
+      const errText = document.getElementById("error-text");
+      const btn     = document.getElementById("submit-btn");
+      const results = document.getElementById("results");
+
+      errBox.classList.add("hidden");
+      results.classList.add("hidden");
+
+      if (!idea) {
+        errText.textContent = "Please enter an automation idea.";
+        errBox.classList.remove("hidden");
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = "Analyzing…";
+
+      try {
+        const res = await fetch("/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idea }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ detail: "Unknown error" }));
+          throw new Error(err.detail || "Request failed");
+        }
+
+        const data = await res.json();
+        renderResults(data);
+      } catch (e) {
+        errText.textContent = e.message;
+        errBox.classList.remove("hidden");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Analyze →";
+      }
+    }
+
+    document.getElementById("idea").addEventListener("keydown", e => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) runAnalysis();
+    });
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Workflow Dashboard — Automation Decision Engine</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+    .fade-in  { animation: fadeIn 0.35s ease-out both; }
+    .fade-in-delay { animation: fadeIn 0.35s ease-out both; }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .card-body  { display: none; }
+    .card-body.open { display: block; }
+    .chevron    { transition: transform 0.2s ease; }
+    .chevron.open { transform: rotate(180deg); }
+    .score-bar-fill { transition: width 0.6s ease; }
+    .spinner {
+      width: 28px; height: 28px;
+      border: 3px solid rgba(99,102,241,0.2);
+      border-top-color: #6366f1;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media print {
+      nav, #input-section, #loading, footer,
+      .card-toggle-btn, #share-export-row { display: none !important; }
+      .card-body { display: block !important; }
+      body { background: #fff !important; color: #111 !important; }
+      #dashboard { display: block !important; }
+      .border { border-color: #ddd !important; }
+      .bg-\[#0d0d0f\], .bg-white\/5, .bg-black\/20 { background: #f9f9f9 !important; }
+      .text-gray-100, .text-gray-200, .text-gray-300 { color: #111 !important; }
+      .text-gray-400, .text-gray-500, .text-gray-600 { color: #555 !important; }
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-[#0d0d0f] text-gray-100">
+
+  <!-- Nav -->
+  <nav class="border-b border-white/5 bg-[#0d0d0f]/80 backdrop-blur sticky top-0 z-10">
+    <div class="max-w-4xl mx-auto px-5 py-3 flex items-center gap-3">
+      <div class="w-7 h-7 rounded-md bg-indigo-500 flex items-center justify-center text-xs font-bold text-white select-none">AE</div>
+      <span class="font-semibold text-sm tracking-tight">Automation Decision Engine</span>
+      <span class="ml-1 text-gray-600">/</span>
+      <span class="text-sm text-gray-400">Workflow Dashboard</span>
+      <a href="/" class="ml-auto text-xs text-gray-500 hover:text-gray-300 transition">← Back</a>
+    </div>
+  </nav>
+
+  <main class="max-w-4xl mx-auto px-5 py-12">
+
+    <!-- Input card -->
+    <div id="input-section" class="mb-10">
+      <div class="text-center mb-8">
+        <h1 class="text-3xl font-bold tracking-tight mb-2">Workflow Comparison</h1>
+        <p class="text-gray-400 text-sm max-w-sm mx-auto">Generate and compare 5 ranked automation strategies for your idea.</p>
+      </div>
+
+      <div class="bg-white/5 border border-white/10 rounded-2xl p-6">
+        <label for="idea" class="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">
+          Your automation idea
+        </label>
+        <textarea
+          id="idea"
+          rows="3"
+          placeholder="e.g. Auto-triage support emails, summarise with AI, and create Jira tickets for critical ones."
+          class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none transition"
+        ></textarea>
+
+        <!-- Realtime toggle -->
+        <div class="mt-4 flex items-center justify-between bg-white/3 border border-white/8 rounded-xl px-4 py-3 transition-colors duration-200" id="toggle-row">
+          <div>
+            <p class="text-sm font-medium text-gray-200" id="toggle-label">Use Latest Market Data</p>
+            <p id="toggle-hint" class="text-xs text-gray-500 mt-0.5">Fetches live pricing &amp; tool data from the web</p>
+          </div>
+          <button
+            id="realtime-toggle"
+            role="switch"
+            aria-checked="false"
+            onclick="toggleRealtime()"
+            class="relative flex-shrink-0 w-11 h-6 rounded-full transition-colors duration-200 bg-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <span id="toggle-thumb" class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-gray-400 shadow transition-transform duration-200"></span>
+          </button>
+        </div>
+
+        <p id="error-msg" class="hidden mt-2 text-xs text-red-400 flex items-center gap-1">
+          <span>&#9888;</span><span id="error-text"></span>
+        </p>
+
+        <button
+          id="submit-btn"
+          onclick="runDashboard()"
+          class="mt-4 w-full bg-indigo-500 hover:bg-indigo-400 active:scale-[0.99] transition-all text-white font-semibold py-2.5 rounded-xl text-sm"
+        >
+          Generate Workflows &rarr;
+        </button>
+      </div>
+    </div>
+
+    <!-- Loading -->
+    <div id="loading" class="hidden flex-col items-center gap-4 py-20 text-center">
+      <div class="spinner mx-auto"></div>
+      <p class="text-sm text-gray-400" id="loading-msg">Generating 5 workflows…</p>
+    </div>
+
+    <!-- Dashboard results -->
+    <div id="dashboard" class="hidden">
+      <!-- Header -->
+      <div class="flex items-start justify-between mb-6 flex-wrap gap-3">
+        <div>
+          <p class="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-1">Dashboard</p>
+          <h2 id="dashboard-idea" class="text-lg font-semibold text-gray-100 max-w-xl leading-snug"></h2>
+        </div>
+        <div id="share-export-row" class="flex items-center gap-2 flex-wrap">
+          <span id="realtime-badge" class="hidden px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-500/20 text-indigo-300 border border-indigo-500/20">
+            ⚡ Real-Time Data
+          </span>
+          <button id="copy-link-btn" onclick="copyShareLink()"
+            class="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/5 border border-white/10 hover:bg-white/10 transition text-gray-400">
+            Copy Link
+          </button>
+          <button onclick="exportPDF()"
+            class="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/5 border border-white/10 hover:bg-white/10 transition text-gray-400">
+            Export PDF
+          </button>
+          <button onclick="resetDashboard()" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/5 border border-white/10 hover:bg-white/10 transition text-gray-400">
+            New idea
+          </button>
+        </div>
+      </div>
+
+      <!-- Key Insights -->
+      <div id="insights-section" class="mb-6 bg-white/5 border border-white/10 rounded-2xl p-5 fade-in">
+        <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Key Insights</p>
+        <div id="insights-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+      </div>
+
+      <!-- Comparison table -->
+      <div id="comparison-table-wrap" class="mb-8 overflow-x-auto rounded-2xl border border-white/10">
+        <table class="w-full text-sm border-collapse" id="comparison-table">
+          <thead>
+            <tr class="bg-white/5 border-b border-white/10">
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-widest whitespace-nowrap">Rank</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-widest">Workflow</th>
+              <th class="px-4 py-3 text-right text-xs font-semibold text-gray-400 uppercase tracking-widest whitespace-nowrap">Cost / mo</th>
+              <th class="px-4 py-3 text-center text-xs font-semibold text-gray-400 uppercase tracking-widest">Complexity</th>
+              <th class="px-4 py-3 text-center text-xs font-semibold text-gray-400 uppercase tracking-widest whitespace-nowrap">AI Used</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-widest">Best For</th>
+            </tr>
+          </thead>
+          <tbody id="comparison-tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- Workflow cards -->
+      <div id="cards-container" class="space-y-4"></div>
+    </div>
+
+  </main>
+
+  <footer class="border-t border-white/5 py-6 text-center text-xs text-gray-700 mt-10">
+    Automation Decision Engine &mdash; FastAPI + OpenAI
+  </footer>
+
+  <script>
+    /* ── Constants ─────────────────────────────────────────────────── */
+    const RANK_BADGES = ["🥇","🥈","🥉","4","5"];
+    const RANK_RING   = [
+      "border-emerald-500/50 bg-emerald-500/5 shadow-[0_0_0_1px_rgba(16,185,129,0.15)]",
+      "border-gray-400/30 bg-gray-400/5",
+      "border-orange-700/30 bg-orange-700/5",
+      "border-white/10 bg-white/5",
+      "border-white/10 bg-white/5",
+    ];
+    const CAT_COLORS = {
+      Trigger:      "bg-blue-500/15 text-blue-300",
+      Action:       "bg-purple-500/15 text-purple-300",
+      AI:           "bg-indigo-500/15 text-indigo-300",
+      Storage:      "bg-teal-500/15 text-teal-300",
+      Notification: "bg-orange-500/15 text-orange-300",
+    };
+    const ROI_COLORS = {
+      Excellent: "text-emerald-400",
+      Good:      "text-green-400",
+      Marginal:  "text-yellow-400",
+      Poor:      "text-red-400",
+    };
+    const FEATURE_LABELS = {
+      text_generation: "Text Generation",
+      reasoning:       "Reasoning",
+      classification:  "Classification",
+      automation:      "Automation",
+    };
+
+    /* ── State ─────────────────────────────────────────────────────── */
+    let realtimeOn    = false;
+    let _currentIdeaId = null;
+
+    /* ── Toggle ────────────────────────────────────────────────────── */
+    function toggleRealtime() {
+      realtimeOn = !realtimeOn;
+      const btn   = document.getElementById("realtime-toggle");
+      const thumb = document.getElementById("toggle-thumb");
+      const hint  = document.getElementById("toggle-hint");
+      const label = document.getElementById("toggle-label");
+      const row   = document.getElementById("toggle-row");
+      btn.setAttribute("aria-checked", String(realtimeOn));
+      if (realtimeOn) {
+        btn.classList.replace("bg-white/10","bg-emerald-500");
+        thumb.classList.replace("bg-gray-400","bg-white");
+        thumb.classList.add("translate-x-5");
+        label.innerHTML = `<span class="text-emerald-300">⚡ Live Data Enabled</span>`;
+        hint.textContent  = "Real-time pricing & tool data will be fetched";
+        hint.className    = "text-xs text-emerald-600 mt-0.5";
+        row.classList.add("border-emerald-500/20","bg-emerald-500/5");
+      } else {
+        btn.classList.replace("bg-emerald-500","bg-white/10");
+        thumb.classList.replace("bg-white","bg-gray-400");
+        thumb.classList.remove("translate-x-5");
+        label.textContent = "Use Latest Market Data";
+        hint.textContent  = "Fetches live pricing & tool data from the web";
+        hint.className    = "text-xs text-gray-500 mt-0.5";
+        row.classList.remove("border-emerald-500/20","bg-emerald-500/5");
+      }
+    }
+
+    /* ── Utils ─────────────────────────────────────────────────────── */
+    function esc(s) {
+      return String(s ?? "")
+        .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+        .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    }
+
+    function fmt$(n) {
+      if (n == null) return "—";
+      return "$" + Number(n).toFixed(2);
+    }
+
+    function complexityLabel(wf) {
+      const total = (wf.workflow_steps?.length ?? 0) + (wf.tools?.length ?? 0);
+      if (total <= 5)  return { label: "Low",    cls: "bg-emerald-500/15 text-emerald-300" };
+      if (total <= 9)  return { label: "Medium",  cls: "bg-yellow-500/15 text-yellow-300" };
+      return               { label: "High",   cls: "bg-red-500/15 text-red-300" };
+    }
+
+    function typeLabel(wf) {
+      const model  = wf.llm_details?.model?.toLowerCase() ?? "none";
+      const hasAI  = model !== "none";
+      const names  = (wf.tools ?? []).map(t => t.name.toLowerCase());
+      const noCode = names.some(n => ["zapier","make","n8n","activepieces"].includes(n));
+      const custom = names.some(n => ["lambda","docker","python","flask","fastapi"].includes(n));
+      if (hasAI && noCode) return { label: "AI + No-Code",  cls: "bg-indigo-500/15 text-indigo-300" };
+      if (hasAI)           return { label: "AI Pipeline",   cls: "bg-purple-500/15 text-purple-300" };
+      if (noCode)          return { label: "No-Code",        cls: "bg-blue-500/15 text-blue-300" };
+      if (custom)          return { label: "Custom Code",    cls: "bg-orange-500/15 text-orange-300" };
+      return                    { label: "Hybrid",          cls: "bg-teal-500/15 text-teal-300" };
+    }
+
+    function prosAndCons(wf) {
+      const cost  = wf.cost_breakdown;
+      const llm   = wf.llm_details;
+      const sb    = wf.score_breakdown;
+      const pros  = [];
+      const cons  = [];
+
+      // ROI
+      const roi = cost?.roi_label;
+      if (roi === "Excellent") pros.push("Excellent ROI");
+      else if (roi === "Good") pros.push("Good ROI");
+      else if (roi === "Marginal") cons.push("Marginal ROI");
+      else if (roi === "Poor")     cons.push("Poor ROI");
+
+      // Monthly cost
+      const monthly = cost?.total_automation_monthly_usd ?? 0;
+      if (monthly < 25)  pros.push(`Low cost (${fmt$(monthly)}/mo)`);
+      else if (monthly > 100) cons.push(`High cost (${fmt$(monthly)}/mo)`);
+
+      // Break-even
+      const be = cost?.break_even_months;
+      if (be != null && be <= 2)  pros.push(`Fast break-even (${be} mo)`);
+      else if (be == null)        cons.push("May never break even");
+      else if (be > 12)           cons.push(`Long break-even (${be} mo)`);
+
+      // Tool count
+      const toolCount = wf.tools?.length ?? 0;
+      if (toolCount <= 3)  pros.push("Minimal tool stack");
+      else if (toolCount >= 6) cons.push(`Many tools (${toolCount})`);
+
+      // Step count
+      const stepCount = wf.workflow_steps?.length ?? 0;
+      if (stepCount <= 4)  pros.push("Simple workflow");
+      else if (stepCount >= 8) cons.push("Complex workflow");
+
+      // LLM features
+      if (llm && llm.model !== "none") {
+        const feats = llm.features ?? {};
+        Object.entries(feats).forEach(([k, v]) => {
+          if (v) pros.push(FEATURE_LABELS[k] ?? k);
+        });
+        const runs = llm.token_profile?.estimated_daily_runs ?? 0;
+        if (runs > 500) cons.push(`High token usage (${runs}/day)`);
+      } else {
+        pros.push("No LLM cost");
+      }
+
+      // Scalability score from wf (original 1-10 before normalisation)
+      const scaleNorm = sb?.scalability_score ?? 0;
+      if (scaleNorm >= 0.7) pros.push("Highly scalable");
+      else if (scaleNorm <= 0.2) cons.push("Limited scalability");
+
+      return { pros: pros.slice(0, 5), cons: cons.slice(0, 4) };
+    }
+
+    /* ── Renderers ─────────────────────────────────────────────────── */
+    function scoreBar(value, colorClass) {
+      const pct = Math.round((value ?? 0) * 100);
+      return `
+        <div class="flex items-center gap-2">
+          <div class="flex-1 h-1 rounded-full bg-white/10 overflow-hidden">
+            <div class="h-full rounded-full score-bar-fill ${colorClass}" style="width:${pct}%"></div>
+          </div>
+          <span class="text-xs text-gray-500 w-8 text-right">${pct}%</span>
+        </div>`;
+    }
+
+    function renderCard(wf, idx) {
+      const rank        = wf.ranking ?? idx + 1;
+      const isTop       = rank === 1;
+      const badge       = RANK_BADGES[rank - 1] ?? String(rank);
+      const ring        = RANK_RING[rank - 1] ?? "border-white/10 bg-white/5";
+      const isEmoji     = rank <= 3;
+      const cardPad     = isTop ? "p-6" : "p-5";
+      const comp        = complexityLabel(wf);
+      const type        = typeLabel(wf);
+      const cost        = wf.cost_breakdown;
+      const llm         = wf.llm_details;
+      const sb          = wf.score_breakdown;
+      const { pros, cons } = prosAndCons(wf);
+      const cardId      = `card-${idx}`;
+      const recommendedTag = isTop
+        ? `<span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">✦ Recommended</span>`
+        : "";
+
+      /* ── Tools HTML ── */
+      const toolsHtml = (wf.tools ?? []).map(t => `
+        <div class="flex items-start gap-2.5">
+          <span class="mt-0.5 px-2 py-0.5 rounded text-[11px] font-semibold whitespace-nowrap ${CAT_COLORS[t.category] ?? "bg-white/10 text-gray-300"}">
+            ${esc(t.category)}
+          </span>
+          <span class="text-sm text-gray-300">${esc(t.name)}</span>
+          <span class="text-gray-600 text-sm">—</span>
+          <span class="text-sm text-gray-400 flex-1">${esc(t.purpose)}</span>
+        </div>`).join("");
+
+      /* ── LLM HTML ── */
+      let llmHtml = "";
+      if (llm && llm.model !== "none") {
+        const featurePills = Object.entries(llm.features ?? {})
+          .filter(([,v]) => v)
+          .map(([k]) => `<span class="px-2 py-0.5 rounded text-[11px] font-medium bg-indigo-500/15 text-indigo-300">${esc(FEATURE_LABELS[k] ?? k)}</span>`)
+          .join("");
+        const tp = llm.token_profile ?? {};
+        llmHtml = `
+          <div class="flex items-center gap-2 flex-wrap mb-3">
+            <span class="text-sm font-semibold text-gray-200">${esc(llm.model)}</span>
+            <span class="text-xs text-gray-500">by ${esc(llm.provider)}</span>
+          </div>
+          ${llm.use_case ? `<p class="text-sm text-gray-400 mb-3">${esc(llm.use_case)}</p>` : ""}
+          ${featurePills ? `<div class="flex flex-wrap gap-1.5 mb-3">${featurePills}</div>` : ""}
+          <div class="grid grid-cols-3 gap-2">
+            <div class="bg-black/20 rounded-lg p-2.5 text-center">
+              <p class="text-[11px] text-gray-500 mb-0.5">Daily Runs</p>
+              <p class="text-sm font-semibold text-gray-200">${tp.estimated_daily_runs ?? 0}</p>
+            </div>
+            <div class="bg-black/20 rounded-lg p-2.5 text-center">
+              <p class="text-[11px] text-gray-500 mb-0.5">Avg Input</p>
+              <p class="text-sm font-semibold text-gray-200">${tp.avg_input_tokens ?? 0} tok</p>
+            </div>
+            <div class="bg-black/20 rounded-lg p-2.5 text-center">
+              <p class="text-[11px] text-gray-500 mb-0.5">Avg Output</p>
+              <p class="text-sm font-semibold text-gray-200">${tp.avg_output_tokens ?? 0} tok</p>
+            </div>
+          </div>`;
+      } else {
+        llmHtml = `<p class="text-sm text-gray-500 italic">No LLM used in this workflow.</p>`;
+      }
+
+      /* ── Steps HTML ── */
+      const stepsHtml = (wf.workflow_steps ?? []).map((s, i) => `
+        <li class="flex gap-3 items-start">
+          <span class="flex-shrink-0 w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-300 text-[11px] font-bold flex items-center justify-center mt-0.5">${i+1}</span>
+          <span class="text-sm text-gray-300 leading-relaxed">${esc(s)}</span>
+        </li>`).join("");
+
+      /* ── Pros / Cons HTML ── */
+      const prosHtml = pros.map(p => `
+        <li class="flex items-start gap-2 text-sm text-gray-300">
+          <span class="text-emerald-400 flex-shrink-0 mt-0.5">✓</span>${esc(p)}
+        </li>`).join("");
+      const consHtml = cons.map(c => `
+        <li class="flex items-start gap-2 text-sm text-gray-300">
+          <span class="text-red-400 flex-shrink-0 mt-0.5">✗</span>${esc(c)}
+        </li>`).join("");
+
+      /* ── Cost row HTML ── */
+      const costHtml = cost ? `
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div class="bg-black/20 rounded-lg p-2.5 text-center">
+            <p class="text-[11px] text-gray-500 mb-0.5">LLM</p>
+            <p class="text-sm font-semibold text-gray-200">${fmt$(cost.llm_monthly_usd)}/mo</p>
+          </div>
+          <div class="bg-black/20 rounded-lg p-2.5 text-center">
+            <p class="text-[11px] text-gray-500 mb-0.5">Tools</p>
+            <p class="text-sm font-semibold text-gray-200">${fmt$(cost.tools_monthly_usd)}/mo</p>
+          </div>
+          <div class="bg-black/20 rounded-lg p-2.5 text-center">
+            <p class="text-[11px] text-gray-500 mb-0.5">Infra</p>
+            <p class="text-sm font-semibold text-gray-200">${fmt$(cost.infra_monthly_usd)}/mo</p>
+          </div>
+          <div class="bg-black/20 rounded-lg p-2.5 text-center">
+            <p class="text-[11px] text-gray-500 mb-0.5">Break-even</p>
+            <p class="text-sm font-semibold text-gray-200">${cost.break_even_months != null ? cost.break_even_months + " mo" : "N/A"}</p>
+          </div>
+        </div>` : "";
+
+      /* ── Score breakdown ── */
+      const scoreHtml = sb ? `
+        <div class="space-y-2">
+          <div><p class="text-[11px] text-gray-500 mb-1">ROI (40%)</p>${scoreBar(sb.roi_score, "bg-emerald-400")}</div>
+          <div><p class="text-[11px] text-gray-500 mb-1">Cost (30%)</p>${scoreBar(sb.cost_score, "bg-blue-400")}</div>
+          <div><p class="text-[11px] text-gray-500 mb-1">Complexity (20%)</p>${scoreBar(sb.complexity_score, "bg-purple-400")}</div>
+          <div><p class="text-[11px] text-gray-500 mb-1">Scalability (10%)</p>${scoreBar(sb.scalability_score, "bg-teal-400")}</div>
+        </div>` : "";
+
+      return `
+      <div class="border ${ring} rounded-2xl overflow-hidden fade-in ${isTop ? "scale-[1.01] origin-top" : ""}" style="animation-delay:${idx * 0.07}s">
+
+        <!-- Card header -->
+        <div class="${cardPad}">
+          ${isTop ? `<div class="flex items-center gap-2 mb-3">${recommendedTag}<span class="text-xs text-emerald-600">Highest composite score</span></div>` : ""}
+          <div class="flex items-start gap-4">
+
+            <!-- Rank badge -->
+            <div class="flex-shrink-0 w-10 h-10 rounded-xl ${isTop ? "bg-emerald-500/15 border border-emerald-500/30" : rank <= 3 ? "bg-yellow-500/10 border border-yellow-500/20" : "bg-white/5 border border-white/10"} flex items-center justify-center text-lg select-none">
+              ${isEmoji ? badge : `<span class="text-sm font-bold text-gray-400">${badge}</span>`}
+            </div>
+
+            <!-- Title + approach -->
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 flex-wrap mb-1">
+                <h3 class="${isTop ? "text-lg" : "text-base"} font-semibold text-gray-100 leading-snug">${esc(wf.title)}</h3>
+                <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full ${ROI_COLORS[cost?.roi_label ?? ""] ?? "text-gray-400"} bg-white/5">
+                  ${esc(cost?.roi_label ?? "")} ROI
+                </span>
+              </div>
+              <p class="text-xs text-gray-500 leading-relaxed">${esc(wf.approach)}</p>
+            </div>
+
+            <!-- Composite score -->
+            <div class="flex-shrink-0 text-right hidden sm:block">
+              <p class="text-[11px] text-gray-600 mb-1">Score</p>
+              <p class="text-lg font-bold text-indigo-400">${Math.round((wf.composite_score ?? 0) * 100)}</p>
+            </div>
+          </div>
+
+          <!-- Quick stats row -->
+          <div class="flex flex-wrap gap-2 mt-4">
+            <span class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-white/8 text-xs text-gray-300">
+              <span class="text-gray-500">$</span>${fmt$(cost?.total_automation_monthly_usd).replace("$","")}<span class="text-gray-600">/mo</span>
+            </span>
+            <span class="px-2.5 py-1 rounded-lg text-xs font-medium ${comp.cls}">${comp.label} complexity</span>
+            <span class="px-2.5 py-1 rounded-lg text-xs font-medium ${type.cls}">${type.label}</span>
+            <span class="px-2.5 py-1 rounded-lg text-xs text-gray-400 bg-white/5 border border-white/8">${wf.tools?.length ?? 0} tools · ${wf.workflow_steps?.length ?? 0} steps</span>
+          </div>
+
+          <!-- Expand toggle -->
+          <button
+            onclick="toggleCard('${cardId}')"
+            class="mt-4 flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 transition group"
+          >
+            <svg id="chevron-${cardId}" class="chevron w-4 h-4 text-gray-600 group-hover:text-gray-300 transition" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+            </svg>
+            <span id="toggle-label-${cardId}">Show details</span>
+          </button>
+        </div>
+
+        <!-- Expandable body -->
+        <div id="${cardId}" class="card-body border-t border-white/8">
+          <div class="p-5 space-y-6">
+
+            <!-- Score breakdown -->
+            <div>
+              <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Score Breakdown</p>
+              ${scoreHtml}
+            </div>
+
+            <!-- Tools + cost -->
+            <div>
+              <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Tools &amp; Cost</p>
+              <div class="space-y-2 mb-4">${toolsHtml}</div>
+              ${costHtml}
+            </div>
+
+            <!-- LLM -->
+            <div>
+              <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">LLM Details</p>
+              ${llmHtml}
+            </div>
+
+            <!-- Steps -->
+            <div>
+              <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Workflow Steps</p>
+              <ol class="space-y-2.5">${stepsHtml}</ol>
+            </div>
+
+            <!-- Pros / Cons -->
+            <div>
+              <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Pros &amp; Cons</p>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="bg-emerald-500/5 border border-emerald-500/15 rounded-xl p-4">
+                  <p class="text-[11px] font-semibold text-emerald-500 uppercase tracking-widest mb-2">Pros</p>
+                  <ul class="space-y-1.5">${prosHtml || '<li class="text-sm text-gray-600 italic">—</li>'}</ul>
+                </div>
+                <div class="bg-red-500/5 border border-red-500/15 rounded-xl p-4">
+                  <p class="text-[11px] font-semibold text-red-500 uppercase tracking-widest mb-2">Cons</p>
+                  <ul class="space-y-1.5">${consHtml || '<li class="text-sm text-gray-600 italic">—</li>'}</ul>
+                </div>
+              </div>
+            </div>
+
+            <!-- Rationale -->
+            ${wf.rationale ? `
+            <div class="border-t border-white/5 pt-5">
+              <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-2">Rationale</p>
+              <p class="text-sm text-gray-400 leading-relaxed">${esc(wf.rationale)}</p>
+            </div>` : ""}
+
+          </div>
+        </div>
+      </div>`;
+    }
+
+    function toggleCard(id) {
+      const body    = document.getElementById(id);
+      const chevron = document.getElementById(`chevron-${id}`);
+      const label   = document.getElementById(`toggle-label-${id}`);
+      const isOpen  = body.classList.toggle("open");
+      chevron.classList.toggle("open", isOpen);
+      label.textContent = isOpen ? "Hide details" : "Show details";
+    }
+
+    /* ── Main flow ─────────────────────────────────────────────────── */
+    function setLoading(on, msg) {
+      document.getElementById("loading").classList.toggle("hidden", !on);
+      document.getElementById("loading").classList.toggle("flex", on);
+      if (msg) document.getElementById("loading-msg").textContent = msg;
+    }
+
+    function showError(msg) {
+      const box  = document.getElementById("error-msg");
+      document.getElementById("error-text").textContent = msg;
+      box.classList.remove("hidden");
+    }
+
+    function clearError() {
+      document.getElementById("error-msg").classList.add("hidden");
+    }
+
+    function resetDashboard() {
+      document.getElementById("dashboard").classList.add("hidden");
+      document.getElementById("input-section").scrollIntoView({ behavior: "smooth" });
+    }
+
+    async function runDashboard() {
+      const idea = document.getElementById("idea").value.trim();
+      clearError();
+
+      if (!idea) { showError("Please enter an automation idea."); return; }
+
+      const btn = document.getElementById("submit-btn");
+      btn.disabled = true;
+      btn.textContent = "Analyzing…";
+      document.getElementById("dashboard").classList.add("hidden");
+      setLoading(true, "Generating 5 workflows…");
+
+      try {
+        /* Step 1 — submit idea */
+        if (realtimeOn) setLoading(true, "Fetching real-time data…");
+        const ideasRes = await fetch("/ideas", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idea, use_realtime: realtimeOn }),
+        });
+        if (!ideasRes.ok) {
+          const err = await ideasRes.json().catch(() => ({ detail: "Unknown error" }));
+          throw new Error(err.detail || "Submission failed");
+        }
+        const { idea_id } = await ideasRes.json();
+
+        /* Step 2 — fetch dashboard */
+        setLoading(true, "Ranking workflows…");
+        const dashRes = await fetch(`/dashboard/${idea_id}`);
+        if (!dashRes.ok) throw new Error("Failed to load dashboard");
+        const data = await dashRes.json();
+
+        renderDashboard(data, idea_id);
+      } catch (e) {
+        showError(e.message);
+      } finally {
+        setLoading(false);
+        btn.disabled = false;
+        btn.textContent = "Generate Workflows →";
+      }
+    }
+
+    /* ── Insights ──────────────────────────────────────────────────── */
+    function renderInsights(workflows) {
+      if (!workflows.length) return;
+
+      // Cheapest
+      const cheapest = [...workflows].sort(
+        (a, b) => (a.cost_breakdown?.total_automation_monthly_usd ?? 999)
+                - (b.cost_breakdown?.total_automation_monthly_usd ?? 999)
+      )[0];
+
+      // Most scalable
+      const mostScalable = [...workflows].sort(
+        (a, b) => (b.score_breakdown?.scalability_score ?? 0)
+                - (a.score_breakdown?.scalability_score ?? 0)
+      )[0];
+
+      // Easiest to build (highest complexity_score = fewest steps/tools)
+      const easiest = [...workflows].sort(
+        (a, b) => (b.score_breakdown?.complexity_score ?? 0)
+                - (a.score_breakdown?.complexity_score ?? 0)
+      )[0];
+
+      // Best ROI
+      const bestRoi = [...workflows].sort(
+        (a, b) => (b.score_breakdown?.roi_score ?? 0)
+                - (a.score_breakdown?.roi_score ?? 0)
+      )[0];
+
+      // Most AI-featured
+      const mostAI = [...workflows].sort((a, b) => {
+        const count = wf => Object.values(wf.llm_details?.features ?? {}).filter(Boolean).length;
+        return count(b) - count(a);
+      })[0];
+
+      // Lowest tool count
+      const fewestTools = [...workflows].sort(
+        (a, b) => (a.tools?.length ?? 99) - (b.tools?.length ?? 99)
+      )[0];
+
+      const insight = (icon, label, wf, detail) => `
+        <div class="flex items-start gap-3 bg-black/20 rounded-xl p-3.5">
+          <span class="text-base flex-shrink-0 mt-0.5">${icon}</span>
+          <div class="min-w-0">
+            <p class="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-0.5">${label}</p>
+            <p class="text-sm font-medium text-gray-200 truncate">${esc(wf.title)}</p>
+            <p class="text-xs text-gray-500 mt-0.5">${detail}</p>
+          </div>
+        </div>`;
+
+      document.getElementById("insights-grid").innerHTML = [
+        insight("💰", "Cheapest Option",   cheapest,    fmt$(cheapest.cost_breakdown?.total_automation_monthly_usd) + "/mo"),
+        insight("📈", "Most Scalable",     mostScalable, `Scalability ${Math.round((mostScalable.score_breakdown?.scalability_score ?? 0) * 100)}%`),
+        insight("🔨", "Easiest to Build",  easiest,      `${easiest.workflow_steps?.length ?? 0} steps · ${easiest.tools?.length ?? 0} tools`),
+        insight("🏆", "Best ROI",          bestRoi,      bestRoi.cost_breakdown?.roi_label ?? ""),
+        insight("🤖", "Most AI-Powered",   mostAI,       mostAI.llm_details?.model !== "none" ? (mostAI.llm_details?.model ?? "—") : "No LLM"),
+        insight("🧩", "Fewest Tools",      fewestTools,  `${fewestTools.tools?.length ?? 0} tool${fewestTools.tools?.length !== 1 ? "s" : ""}`),
+      ].join("");
+    }
+
+    function bestFor(wf) {
+      const cost  = wf.cost_breakdown;
+      const llm   = wf.llm_details;
+      const sb    = wf.score_breakdown ?? {};
+      const model = llm?.model?.toLowerCase() ?? "none";
+
+      if (cost?.roi_label === "Excellent" && (cost?.total_automation_monthly_usd ?? 999) < 30)
+        return "Budget-conscious teams";
+      if (model !== "none" && (llm?.features?.reasoning || llm?.features?.classification))
+        return "AI-driven decision making";
+      if (model !== "none" && llm?.features?.text_generation)
+        return "Content & communication tasks";
+      if ((sb.scalability_score ?? 0) >= 0.75)
+        return "High-volume / scale-up";
+      if ((sb.complexity_score ?? 0) >= 0.75)
+        return "Quick wins, minimal setup";
+      const names = (wf.tools ?? []).map(t => t.name.toLowerCase());
+      if (names.some(n => ["zapier","make","n8n"].includes(n)))
+        return "No-code / low-code teams";
+      return "General automation";
+    }
+
+    function renderComparisonTable(workflows) {
+      const RANK_EMOJI = ["🥇","🥈","🥉","4th","5th"];
+      const tbody = document.getElementById("comparison-tbody");
+      tbody.innerHTML = workflows.map((wf, i) => {
+        const rank    = wf.ranking ?? i + 1;
+        const comp    = complexityLabel(wf);
+        const cost    = wf.cost_breakdown;
+        const llm     = wf.llm_details;
+        const model   = llm?.model?.toLowerCase() ?? "none";
+        const hasAI   = model !== "none";
+        const monthly = cost?.total_automation_monthly_usd;
+        const roi     = cost?.roi_label ?? "";
+        const rowBg   = i % 2 === 0 ? "" : "bg-white/[0.02]";
+        const badge   = RANK_EMOJI[rank - 1] ?? String(rank);
+
+        const aiCell = hasAI
+          ? `<span class="px-2 py-0.5 rounded text-[11px] font-medium bg-purple-500/15 text-purple-300">${esc(llm.model)}</span>`
+          : `<span class="px-2 py-0.5 rounded text-[11px] font-medium bg-white/8 text-gray-500">None</span>`;
+
+        const roiCls = ROI_COLORS[roi] ?? "text-gray-400";
+
+        return `
+          <tr class="border-b border-white/5 last:border-0 ${rowBg} hover:bg-white/5 transition-colors cursor-pointer"
+              onclick="jumpToCard(${i})">
+            <td class="px-4 py-3 whitespace-nowrap">
+              <span class="text-base">${rank <= 3 ? badge : ""}</span>
+              <span class="text-sm font-semibold ${rank <= 3 ? "text-gray-300" : "text-gray-500"}">${rank <= 3 ? "" : badge}</span>
+            </td>
+            <td class="px-4 py-3">
+              <p class="text-sm font-medium text-gray-200 leading-snug">${esc(wf.title)}</p>
+              <p class="text-xs text-gray-600 mt-0.5 line-clamp-1">${esc(wf.approach)}</p>
+            </td>
+            <td class="px-4 py-3 text-right whitespace-nowrap">
+              <span class="text-sm font-semibold text-gray-200">${fmt$(monthly)}</span>
+              <span class="block text-[11px] ${roiCls}">${esc(roi)} ROI</span>
+            </td>
+            <td class="px-4 py-3 text-center">
+              <span class="px-2 py-0.5 rounded text-[11px] font-medium ${comp.cls}">${comp.label}</span>
+            </td>
+            <td class="px-4 py-3 text-center">${aiCell}</td>
+            <td class="px-4 py-3 text-sm text-gray-400">${esc(bestFor(wf))}</td>
+          </tr>`;
+      }).join("");
+    }
+
+    function jumpToCard(idx) {
+      const cardId = `card-${idx}`;
+      const body   = document.getElementById(cardId);
+      if (body && !body.classList.contains("open")) toggleCard(cardId);
+      document.getElementById(`card-${idx}`)
+        ?.closest(".border")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    /* ── Share & Export ────────────────────────────────────────────── */
+    function copyShareLink() {
+      if (!_currentIdeaId) return;
+      const url = `${window.location.origin}/dashboard?id=${_currentIdeaId}`;
+      navigator.clipboard.writeText(url).then(() => {
+        const btn = document.getElementById("copy-link-btn");
+        const orig = btn.textContent;
+        btn.textContent = "Copied!";
+        btn.classList.add("text-emerald-400");
+        setTimeout(() => { btn.textContent = orig; btn.classList.remove("text-emerald-400"); }, 2000);
+      }).catch(() => {
+        prompt("Copy this link:", `${window.location.origin}/dashboard?id=${_currentIdeaId}`);
+      });
+    }
+
+    function exportPDF() {
+      // Expand all cards before printing so nothing is hidden
+      document.querySelectorAll(".card-body").forEach(el => el.classList.add("open"));
+      window.print();
+    }
+
+    function renderDashboard(data, ideaId = null) {
+      if (ideaId) {
+        _currentIdeaId = ideaId;
+        history.pushState({}, "", `?id=${ideaId}`);
+      }
+
+      document.getElementById("dashboard-idea").textContent = `"${data.idea}"`;
+      document.getElementById("realtime-badge").classList.toggle("hidden", !data.realtime_data_used);
+
+      const workflows = data.workflows ?? [];
+
+      renderInsights(workflows);
+      renderComparisonTable(workflows);
+
+      const container = document.getElementById("cards-container");
+      container.innerHTML = workflows.map((wf, i) => renderCard(wf, i)).join("");
+
+      document.getElementById("dashboard").classList.remove("hidden");
+      document.getElementById("dashboard").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    /* ── Keyboard shortcut ─────────────────────────────────────────── */
+    document.getElementById("idea").addEventListener("keydown", e => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) runDashboard();
+    });
+
+    /* ── Load from URL params on page load ─────────────────────────── */
+    async function loadDashboardById(ideaId) {
+      const btn = document.getElementById("submit-btn");
+      btn.disabled = true;
+      setLoading(true, "Loading dashboard…");
+      try {
+        const res = await fetch(`/dashboard/${ideaId}`);
+        if (!res.ok) throw new Error("Dashboard not found — it may have been deleted.");
+        const data = await res.json();
+        document.getElementById("idea").value = data.idea ?? "";
+        _currentIdeaId = ideaId;
+        renderDashboard(data, ideaId);
+      } catch (e) {
+        showError(e.message);
+      } finally {
+        setLoading(false);
+        btn.disabled = false;
+      }
+    }
+
+    (function initFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      const id   = params.get("id");
+      const idea = params.get("idea");
+      if (id) {
+        loadDashboardById(id);
+      } else if (idea) {
+        document.getElementById("idea").value = idea;
+        runDashboard();
+      }
+    })();
+  </script>
+
+</body>
+</html>
